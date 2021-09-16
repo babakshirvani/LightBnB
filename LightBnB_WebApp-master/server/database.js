@@ -57,8 +57,9 @@ const addUser = function(user) {
     VALUES ($1, $2, $3)
     RETURNING *;
   `;
-  return pool.query(queryString, [user.name, user.email, user.password]);
-
+  return pool.query(queryString, [user.name, user.email, user.password])
+    .then(res => res.rows[0])
+    .catch(err => console.log(err.stack));
 }
 exports.addUser = addUser;
 
@@ -70,8 +71,22 @@ exports.addUser = addUser;
  * @return {Promise<[{}]>} A promise to the reservations.
  */
 const getAllReservations = function(guest_id, limit = 10) {
-  return getAllProperties(null, 2);
-}
+  const queryString = `
+  SELECT properties.*, reservations.*, avg(rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON property_reviews.property_id = properties.id
+  JOIN reservations ON reservations.property_id = properties.id
+  JOIN users ON reservations.guest_id = users.id
+  WHERE reservations.guest_id = $1 
+  AND reservations.end_date < now()::date
+  GROUP BY properties.id, reservations.id
+  ORDER BY start_date
+  LIMIT $2;
+`;
+  return pool.query(queryString, [guest_id, limit])
+    .then(res => res.rows)
+    .catch(err => console.log(err.stack));
+};
 exports.getAllReservations = getAllReservations;
 
 /// Properties
@@ -86,7 +101,11 @@ exports.getAllReservations = getAllReservations;
 const getAllProperties = function(options, limit = 10) {
   const values = [limit];
   const queryString = `
-    SELECT * FROM properties
+    SELECT properties.*, avg(rating) as average_rating
+    FROM properties
+    JOIN property_reviews ON property_reviews.property_id = properties.id
+    GROUP BY properties.id
+    ORDER BY properties.id
     LIMIT $1
   `;
   return pool.query(queryString, values)
